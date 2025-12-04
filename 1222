@@ -1,0 +1,204 @@
+import pygame
+import random
+import sys
+
+# Инициализация Pygame
+pygame.init()
+
+# Константы
+WIDTH, HEIGHT = 800, 600
+PADDLE_WIDTH, PADDLE_HEIGHT = 100, 20
+BALL_SIZE = 40  # Размер астероида
+FPS = 60
+
+# Цвета
+WHITE = (255, 255, 255)
+
+# Создаем окно
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Космический пинг-понг")
+clock = pygame.time.Clock()
+
+# Загрузка ваших файлов
+try:
+    background = pygame.image.load("galaxy.png")
+    background = pygame.transform.scale(background, (WIDTH, HEIGHT))
+    
+    ball_image = pygame.image.load("asteroid.png")
+    ball_image = pygame.transform.scale(ball_image, (BALL_SIZE, BALL_SIZE))
+    
+    # Загрузка звука
+    pygame.mixer.music.load("space.mp3")
+    pygame.mixer.music.play(-1)  # -1 означает бесконечное повторение
+    pygame.mixer.music.set_volume(0.3)
+    
+except FileNotFoundError as e:
+    print(f"Ошибка: Файл не найден - {e}")
+    print("Убедитесь, что все файлы в той же папке:")
+    print("1. galaxy.png")
+    print("2. space.mp3")
+    print("3. asteroid.png")
+    sys.exit()
+
+# Создаем платформу (ракету)
+class Paddle:
+    def __init__(self):
+        self.width = PADDLE_WIDTH
+        self.height = PADDLE_HEIGHT
+        self.x = WIDTH // 2 - self.width // 2
+        self.y = HEIGHT - 50
+        self.speed = 8
+        self.color = (100, 200, 255)
+    
+    def move(self, direction):
+        if direction == "left" and self.x > 0:
+            self.x -= self.speed
+        if direction == "right" and self.x < WIDTH - self.width:
+            self.x += self.speed
+    
+    def draw(self):
+        # Рисуем платформу с градиентом для красоты
+        for i in range(self.height):
+            color_value = max(0, 255 - i * 5)
+            pygame.draw.rect(screen, (color_value, color_value, 255), 
+                           (self.x, self.y + i, self.width, 1))
+        # Обводка платформы
+        pygame.draw.rect(screen, WHITE, (self.x, self.y, self.width, self.height), 2)
+
+# Создаем мяч (астероид)
+class Ball:
+    def __init__(self):
+        self.size = BALL_SIZE
+        self.reset()
+        self.speed_increase = 0.2  # Постепенное увеличение скорости
+    
+    def reset(self):
+        self.x = random.randint(BALL_SIZE, WIDTH - BALL_SIZE)
+        self.y = 50
+        self.dx = random.choice([-4, -3, 3, 4])
+        self.dy = 4
+    
+    def move(self, paddle):
+        self.x += self.dx
+        self.y += self.dy
+        
+        # Отскок от стен
+        if self.x <= 0 or self.x >= WIDTH - self.size:
+            self.dx = -self.dx
+        
+        # Отскок от потолка
+        if self.y <= 0:
+            self.dy = -self.dy
+        
+        # Отскок от платформы
+        if (self.y + self.size >= paddle.y and 
+            self.y <= paddle.y + paddle.height and
+            self.x + self.size >= paddle.x and 
+            self.x <= paddle.x + paddle.width):
+            
+            self.dy = -self.dy
+            
+            # Увеличиваем скорость при каждом отскоке
+            self.dx *= 1.05
+            self.dy *= 1.05
+            
+            # Эффект отскока в зависимости от части платформы
+            hit_pos = (self.x - paddle.x) / paddle.width
+            self.dx = 5 * (hit_pos - 0.5)
+        
+        # Если мяч упал
+        if self.y > HEIGHT:
+            return True
+        return False
+    
+    def draw(self):
+        # Рисуем астероид
+        screen.blit(ball_image, (self.x, self.y))
+        
+        # Добавляем эффект движения
+        pygame.draw.circle(screen, (255, 200, 100), 
+                          (int(self.x + self.size//2), int(self.y + self.size//2)), 
+                          self.size//2, 1)
+
+# Создаем объекты
+paddle = Paddle()
+ball = Ball()
+
+# Счет
+score = 0
+font = pygame.font.SysFont('Arial', 36)
+
+# Главный игровой цикл
+running = True
+game_over = False
+
+while running:
+    # Обработка событий
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_r and game_over:
+                # Перезапуск игры
+                ball.reset()
+                score = 0
+                game_over = False
+    
+    if not game_over:
+        # Управление
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+            paddle.move("left")
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+            paddle.move("right")
+        
+        # Движение мяча
+        if ball.move(paddle):
+            game_over = True
+        else:
+            # Увеличиваем счет за каждый отскок от платформы
+            if ball.dy < 0:  # Мяч летит вверх после отскока
+                score += 1
+    
+    # Отрисовка
+    # Фон
+    screen.blit(background, (0, 0))
+    
+    # Добавляем звезды для эффекта
+    for _ in range(5):
+        pygame.draw.circle(screen, WHITE, 
+                          (random.randint(0, WIDTH), random.randint(0, HEIGHT)), 
+                          random.randint(1, 2))
+    
+    # Объекты
+    paddle.draw()
+    ball.draw()
+    
+    # Счет
+    score_text = font.render(f'Счет: {score}', True, WHITE)
+    screen.blit(score_text, (10, 10))
+    
+    # Инструкция
+    controls_text = pygame.font.SysFont('Arial', 20).render(
+        'Управление: ← → или A D', True, (200, 200, 255))
+    screen.blit(controls_text, (WIDTH - 250, 10))
+    
+    # Сообщение о проигрыше
+    if game_over:
+        game_over_text = font.render('ИГРА ОКОНЧЕНА!', True, (255, 50, 50))
+        restart_text = font.render('Нажмите R для перезапуска', True, WHITE)
+        
+        screen.blit(game_over_text, 
+                   (WIDTH//2 - game_over_text.get_width()//2, HEIGHT//2 - 50))
+        screen.blit(restart_text, 
+                   (WIDTH//2 - restart_text.get_width()//2, HEIGHT//2 + 10))
+        
+        final_score = font.render(f'Финальный счет: {score}', True, (255, 255, 100))
+        screen.blit(final_score, 
+                   (WIDTH//2 - final_score.get_width()//2, HEIGHT//2 + 70))
+    
+    # Обновление экрана
+    pygame.display.flip()
+    clock.tick(FPS)
+
+pygame.quit()
